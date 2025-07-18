@@ -1,6 +1,7 @@
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
+import os
 
 def run_rsync(line):
     source, dest = line.split(',')
@@ -21,7 +22,7 @@ def main():
     with open('files.txt', 'r') as file:
         lines = file.readlines()
 
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=os.cpu_count()*4) as executor:
         futures = [executor.submit(run_rsync, line.strip()) for line in lines]
 
         for future in as_completed(futures):
