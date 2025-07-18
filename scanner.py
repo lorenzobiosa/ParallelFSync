@@ -60,7 +60,7 @@ def list_all_files():
                                 with lock:
                                     stats["files"] += 1
                                     stats["size"] += stat.st_size
-                                    files.append((entry.path, stat.st_mtime, stat.st_size))
+                                    files.append((entry.path))
                             except FileNotFoundError:
                                 continue
                     elif entry.is_dir(follow_symlinks=False):
@@ -93,3 +93,9 @@ if __name__ == "__main__":
     all_files = list_all_files()
     print(f"\nFound {len(all_files)} files.")
     print("End date:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # Salva su file
+    output_file = "file_list.txt"
+    with open(output_file, "w", encoding="utf-8") as f:
+        for path in all_files:
+            f.write(f"{path}\n")
+    print(f"File list written to {output_file}")

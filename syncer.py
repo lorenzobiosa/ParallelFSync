@@ -1,62 +1,37 @@
-import asyncio
-import os
-import tempfile
-from config import SOURCE, DEST, BATCH_SIZE, MAX_PARALLEL_RSYNC
-from logger import setup_logger
+import subprocess
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime
 
-logger = setup_logger()
-last_state = {}
+def run_rsync(line):
+    source, dest = line.split(',')
 
-def detect_changes(files):
-    changed = []
-    global last_state
-
-    for path, mtime, size in files:
-        rel_path = os.path.relpath(path, SOURCE)
-        key = rel_path
-        if key not in last_state or last_state[key] != (mtime, size):
-            changed.append(rel_path)
-            last_state[key] = (mtime, size)
-
-    return changed
-
-async def run_rsync_batch(batch_paths):
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
-        for path in batch_paths:
-            tmp.write(f"{path}\n")
-        tmp_path = tmp.name
-
-    cmd = [
-        "rsync", "-azHAX", "--delete", "--files-from", tmp_path,
-        "--relative", SOURCE + "/", DEST
+    command = [
+        'rsync', '-azHAXv', '--delete', source, dest
     ]
 
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT
-    )
+    with open('rsync.log', 'a') as log_file:
+        log_file.write(f'{datetime.now()} - Start: {source} -> {dest}\n')
+        subprocess.run(command, stdout=log_file, stderr=log_file)
+        log_file.write(f'{datetime.now()} - End: {source} -> {dest}\n')
 
-    async for line in process.stdout:
-        logger.info(line.decode().strip())
+def main():
+    with open('rsync.log', 'a') as log_file:
+        log_file.write(f'{datetime.now()} - Start of sync process\n')
 
-    await process.wait()
-    os.remove(tmp_path)
+    with open('files.txt', 'r') as file:
+        lines = file.readlines()
 
-async def sync_changes(changed_paths):
-    if not changed_paths:
-        return
+    with ProcessPoolExecutor() as executor:
+        futures = [executor.submit(run_rsync, line.strip()) for line in lines]
 
-    logger.info(f"{len(changed_paths)} file(s) da sincronizzare")
-    batches = [changed_paths[i:i + BATCH_SIZE] for i in range(0, len(changed_paths), BATCH_SIZE)]
-    tasks = []
-    sem = asyncio.Semaphore(MAX_PARALLEL_RSYNC)
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f'Errore: {e}')
 
-    async def limited_rsync(batch):
-        async with sem:
-            await run_rsync_batch(batch)
+    with open('rsync.log', 'a') as log_file:
+        log_file.write(f'{datetime.now()} - End of sync process\n')
 
-    for batch in batches:
-        tasks.append(asyncio.create_task(limited_rsync(batch)))
-
-    await asyncio.gather(*tasks)
+if __name__ == '__main__':
+    main()
